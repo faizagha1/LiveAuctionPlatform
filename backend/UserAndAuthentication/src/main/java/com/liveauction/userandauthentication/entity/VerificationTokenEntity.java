@@ -9,8 +9,7 @@ import lombok.*;
 import java.time.Instant;
 
 @Entity
-@Table(name = "tokens", uniqueConstraints = {
-})
+@Table(name = "tokens")
 @Getter
 @Setter
 @NoArgsConstructor
