@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/AuctionPlatformFinal.iml" filepath="$PROJECT_DIR$/.idea/AuctionPlatformFinal.iml" />
+      <module fileurl="file://$PROJECT_DIR$/backend/BiddingEngine/BiddingEngine.iml" filepath="$PROJECT_DIR$/backend/BiddingEngine/BiddingEngine.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Auction/backend.Auction.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Auction/backend.Auction.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Item/backend.Item.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Item/backend.Item.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Shared/backend.Shared.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Shared/backend.Shared.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/UserAndAuthentication/backend.UserAndAuthentication.main.iml" filepath="$PROJECT_DIR$/.idea/modules/UserAndAuthentication/backend.UserAndAuthentication.main.iml" />
+    </modules>
+  </component>
+</project>

@@ -1,0 +1,126 @@
+package com.liveauction.userandauthentication.service;
+
+import com.liveauction.userandauthentication.entity.UserEntity;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Service;
+
+import javax.crypto.SecretKey;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+
+@Service
+@Slf4j
+public class JwtService {
+
+    @Value("${app.jwt.secret}")
+    private String secretKey;
+
+    @Value("${app.jwt.expiration}")
+    private long jwtExpiration;
+
+    /**
+     * Extract user ID (from token subject)
+     */
+    public String extractUserId(String token) {
+        return extractClaim(token, Claims::getSubject);
+    }
+
+    /**
+     * Extract any claim from token
+     */
+    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
+        final Claims claims = extractAllClaims(token);
+        return claimsResolver.apply(claims);
+    }
+
+    /**
+     * Generate JWT token for user
+     * Subject = userId (UUID)
+     * Claims = roles, username
+     */
+    public String generateToken(UserDetails userDetails) {
+        UserEntity user = (UserEntity) userDetails;
+        Map<String, Object> claims = new HashMap<>();
+
+        // Add roles to claims
+        List<String> roles = user.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .toList();
+        claims.put("roles", roles);
+        claims.put("username", user.getUsername());
+
+        return buildToken(claims, user);
+    }
+
+    /**
+     * Build the actual JWT token
+     */
+    private String buildToken(Map<String, Object> extraClaims, UserEntity user) {
+        long now = System.currentTimeMillis();
+        return Jwts.builder()
+                .claims(extraClaims)
+                .subject(user.getId().toString())
+                .issuedAt(new Date(now))
+                .expiration(new Date(now + jwtExpiration))
+                .signWith(getSignInKey())
+                .compact();
+    }
+
+    /**
+     * Validate token against user
+     */
+    public boolean isTokenValid(String token, UserDetails userDetails) {
+        try {
+            final String userId = extractUserId(token);
+            UserEntity user = (UserEntity) userDetails;
+            return userId.equals(user.getId().toString()) && !isTokenExpired(token);
+        } catch (Exception e) {
+            log.warn("Invalid JWT token: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Check if token is expired
+     */
+    private boolean isTokenExpired(String token) {
+        return extractExpiration(token).before(new Date());
+    }
+
+    /**
+     * Extract expiration date from token
+     */
+    private Date extractExpiration(String token) {
+        return extractClaim(token, Claims::getExpiration);
+    }
+
+    /**
+     * Extract all claims from token
+     */
+    private Claims extractAllClaims(String token) {
+        return Jwts.parser()
+                .verifyWith(getSignInKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+    }
+
+    /**
+     * Get signing key from secret
+     */
+    private SecretKey getSignInKey() {
+        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
+        return Keys.hmacShaKeyFor(keyBytes);
+    }
+}
+

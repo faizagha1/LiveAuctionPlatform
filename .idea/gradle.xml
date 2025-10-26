@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="GradleMigrationSettings" migrationVersion="1" />
+  <component name="GradleSettings">
+    <option name="linkedExternalProjectsSettings">
+      <GradleProjectSettings>
+        <option name="externalProjectPath" value="$PROJECT_DIR$/backend" />
+        <option name="modules">
+          <set>
+            <option value="$PROJECT_DIR$/backend" />
+            <option value="$PROJECT_DIR$/backend/Auction" />
+            <option value="$PROJECT_DIR$/backend/Item" />
+            <option value="$PROJECT_DIR$/backend/Notifications" />
+            <option value="$PROJECT_DIR$/backend/Shared" />
+            <option value="$PROJECT_DIR$/backend/UserAndAuthentication" />
+          </set>
+        </option>
+      </GradleProjectSettings>
+    </option>
+  </component>
+</project>
