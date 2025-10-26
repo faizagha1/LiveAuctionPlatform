@@ -10,7 +10,7 @@ function ClaimsPage({ token, navigate, user }) {
 
     const fetchClaims = async () => {
         try {
-            const response = await fetch('http://localhost:8082/api/v1/auctions/me/claimed-items', {
+            const response = await fetch('http://localhost:8082/api/v2/auctions/me/claimed-items', {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (response.ok) {

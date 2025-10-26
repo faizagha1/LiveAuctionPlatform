@@ -54,8 +54,8 @@ func main() {
 	router.GET("/health", handlers.HealthCheck)
 
 	// Auction endpoints
-	router.GET("/api/v1/auctions/:id/current-bid", handlers.GetCurrentBid(auctionHub))
-	router.GET("/api/v1/auctions/:id/bids", handlers.GetBidHistory(auctionHub))
+	router.GET("/api/v2/auctions/:id/current-bid", handlers.GetCurrentBid(auctionHub))
+	router.GET("/api/v2/auctions/:id/bids", handlers.GetBidHistory(auctionHub))
 
 	// WebSocket endpoint
 	router.GET("/ws/auctions/:id", handlers.WebSocketHandler(auctionHub))

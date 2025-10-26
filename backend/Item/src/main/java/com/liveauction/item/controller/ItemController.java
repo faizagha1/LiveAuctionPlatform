@@ -17,14 +17,14 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/items")
+@RequestMapping("/api/v2/items")
 @RequiredArgsConstructor
 public class ItemController {
 
     private final ItemService itemService;
 
     /**
-     * POST /api/v1/items
+     * POST /api/v2/items
      * Create a new item
      */
     @PostMapping
@@ -37,7 +37,7 @@ public class ItemController {
     }
 
     /**
-     * PUT /api/v1/items/{itemId}
+     * PUT /api/v2/items/{itemId}
      * Update an existing item
      */
     @PutMapping("/{itemId}")
@@ -51,7 +51,7 @@ public class ItemController {
     }
 
     /**
-     * GET /api/v1/items/my-items
+     * GET /api/v2/items/my-items
      * List all items owned by current user
      */
     @GetMapping("/my-items")
@@ -62,7 +62,7 @@ public class ItemController {
     }
 
     /**
-     * GET /api/v1/items/my-items/{itemId}
+     * GET /api/v2/items/my-items/{itemId}
      * Get full item details (owner only)
      */
     @GetMapping("/my-items/{itemId}")
@@ -75,7 +75,7 @@ public class ItemController {
     }
 
     /**
-     * GET /api/v1/items/{itemId}
+     * GET /api/v2/items/{itemId}
      * Get public item details (anyone can view)
      */
     @GetMapping("/{itemId}")

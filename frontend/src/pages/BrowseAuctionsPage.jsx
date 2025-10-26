@@ -12,7 +12,7 @@ function BrowseAuctionsPage({ token, navigate }) {
     const fetchAuctions = async () => {
         setLoading(true);
         try {
-            const response = await fetch(`http://localhost:8082/api/v1/auctions/by-status/${status}`, {
+            const response = await fetch(`http://localhost:8082/api/v2/auctions/by-status/${status}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (response.ok) {

@@ -14,7 +14,7 @@ function ItemDetailsPage({ token, navigate, itemId }) {
 
     const fetchItem = async () => {
         try {
-            const response = await fetch(`http://localhost:8081/api/v1/items/my-items/${itemId}`, {
+            const response = await fetch(`http://localhost:8081/api/v2/items/my-items/${itemId}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (response.ok) {
@@ -31,7 +31,7 @@ function ItemDetailsPage({ token, navigate, itemId }) {
     const fetchClaims = async () => {
         setClaimsLoading(true);
         try {
-            const response = await fetch(`http://localhost:8082/api/v1/auctions/claims/item/${itemId}`, {
+            const response = await fetch(`http://localhost:8082/api/v2/auctions/claims/item/${itemId}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (response.ok) {
@@ -69,7 +69,7 @@ function ItemDetailsPage({ token, navigate, itemId }) {
         setReviewingClaimId(claimId);
 
         try {
-            const response = await fetch(`http://localhost:8082/api/v1/auctions/claims/${claimId}/review`, {
+            const response = await fetch(`http://localhost:8082/api/v2/auctions/claims/${claimId}/review`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',

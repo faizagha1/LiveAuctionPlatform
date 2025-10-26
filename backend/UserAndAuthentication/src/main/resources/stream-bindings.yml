@@ -1,0 +1,18 @@
+spring:
+  cloud:
+    stream:
+      bindings:
+        eventChannel-out-0:
+          destination: resource-events-exchange
+      rabbit:
+        bindings:
+          eventChannel-out-0:
+            producer:
+              exchangeType: topic
+              routing-key-expression: headers['routingKey']
+
+app:
+  bindings:
+    user:
+      created: "user.created"
+    event-exchange: eventChannel-out-0

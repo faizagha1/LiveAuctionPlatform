@@ -10,7 +10,7 @@ function AuctionsPage({ token, navigate }) {
 
     const fetchAuctions = async () => {
         try {
-            const response = await fetch('http://localhost:8082/api/v1/auctions/my-auctions', {
+            const response = await fetch('http://localhost:8082/api/v2/auctions/my-auctions', {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (response.ok) {

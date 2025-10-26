@@ -29,7 +29,7 @@ function CreateAuctionPage({ token, navigate, claimId }) {
     const fetchClaimAndItem = async () => {
         try {
             // Fetch all approved claims for the current auctioneer
-            const claimResponse = await fetch(`http://localhost:8082/api/v1/auctions/me/claimed-items`, {
+            const claimResponse = await fetch(`http://localhost:8082/api/v2/auctions/me/claimed-items`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
 
@@ -47,7 +47,7 @@ function CreateAuctionPage({ token, navigate, claimId }) {
                 setClaim(foundClaim);
 
                 // Fetch the public item details from the item service
-                const itemResponse = await fetch(`http://localhost:8081/api/v1/items/${foundClaim.itemId}`, {
+                const itemResponse = await fetch(`http://localhost:8081/api/v2/items/${foundClaim.itemId}`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
 
@@ -103,7 +103,7 @@ function CreateAuctionPage({ token, navigate, claimId }) {
         }
 
         try {
-            const response = await fetch(`http://localhost:8082/api/v1/auctions/claims/${claimId}/create-auction`, {
+            const response = await fetch(`http://localhost:8082/api/v2/auctions/claims/${claimId}/create-auction`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

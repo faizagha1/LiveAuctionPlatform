@@ -12,7 +12,7 @@ function EditItemPage({ token, navigate, itemId }) {
 
     const fetchItem = async () => {
         try {
-            const response = await fetch(`http://localhost:8081/api/v1/items/my-items/${itemId}`, {
+            const response = await fetch(`http://localhost:8081/api/v2/items/my-items/${itemId}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (response.ok) {
@@ -32,7 +32,7 @@ function EditItemPage({ token, navigate, itemId }) {
         setError('');
 
         try {
-            const response = await fetch(`http://localhost:8081/api/v1/items/${itemId}`, {
+            const response = await fetch(`http://localhost:8081/api/v2/items/${itemId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',

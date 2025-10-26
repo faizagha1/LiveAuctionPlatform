@@ -10,7 +10,7 @@ function ItemsPage({ token, navigate }) {
 
     const fetchItems = async () => {
         try {
-            const response = await fetch('http://localhost:8081/api/v1/items/my-items', {
+            const response = await fetch('http://localhost:8081/api/v2/items/my-items', {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (response.ok) {

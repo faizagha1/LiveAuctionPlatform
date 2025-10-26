@@ -1,11 +1,22 @@
 version: '3.8'
 
 services:
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: auction-mailhog  # ⬅️ Added container name
+    restart: always
+    ports:
+      - "1025:1025"  # SMTP server port
+      - "8025:8025"  # MailHog web UI port
+    networks:
+      - auction-network  # ⬅️ ADD THIS!
+
   rabbitmq:
     image: rabbitmq:3-management
     container_name: auction-rabbitmq
+    restart: always
     ports:
-      - "5672:5672"    # AMQP port (for your Go app to connect)
+      - "5672:5672"    # AMQP port
       - "15672:15672"  # Management UI port
     environment:
       RABBITMQ_DEFAULT_USER: guest

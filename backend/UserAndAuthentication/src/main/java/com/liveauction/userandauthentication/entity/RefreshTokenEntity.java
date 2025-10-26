@@ -1,6 +1,5 @@
 package com.liveauction.userandauthentication.entity;
 
-import com.liveauction.userandauthentication.entity.enums.VerificationTokenType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
@@ -10,14 +9,15 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "verification_tokens")
+@Table(name = "refresh_tokens")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class VerificationTokenEntity extends BaseEntity {
-    @Column(nullable = false, unique = true, length = 512)
+
+public class RefreshTokenEntity extends BaseEntity{
+    @Column(nullable = false)
     private String token;
 
     @Column(nullable = false)
@@ -25,7 +25,4 @@ public class VerificationTokenEntity extends BaseEntity {
 
     @Column(nullable = false)
     private Instant expiryDate;
-
-    @Column(nullable = false)
-    private VerificationTokenType type;
 }

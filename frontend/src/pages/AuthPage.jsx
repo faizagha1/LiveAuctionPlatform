@@ -17,7 +17,7 @@ function AuthPage({ onLogin }) {
 
         try {
             const endpoint = isLogin ? '/login' : '/register';
-            const response = await fetch(`http://localhost:8080/api/v1/authentication${endpoint}`, {
+            const response = await fetch(`http://localhost:8080/api/v2/authentication${endpoint}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData)

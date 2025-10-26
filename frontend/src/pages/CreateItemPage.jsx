@@ -19,7 +19,7 @@ function CreateItemPage({ token, navigate }) {
         setError('');
 
         try {
-            const response = await fetch('http://localhost:8081/api/v1/items', {
+            const response = await fetch('http://localhost:8081/api/v2/items', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

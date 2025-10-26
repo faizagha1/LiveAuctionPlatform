@@ -35,7 +35,7 @@ function App() {
 
     const fetchUserProfile = async (authToken) => {
         try {
-            const response = await fetch('http://localhost:8080/api/v1/users/me', {
+            const response = await fetch('http://localhost:8080/api/v2/users/me', {
                 headers: { Authorization: `Bearer ${authToken}` }
             });
             if (response.ok) {

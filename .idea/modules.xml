@@ -6,6 +6,7 @@
       <module fileurl="file://$PROJECT_DIR$/backend/BiddingEngine/BiddingEngine.iml" filepath="$PROJECT_DIR$/backend/BiddingEngine/BiddingEngine.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Auction/backend.Auction.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Auction/backend.Auction.main.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Item/backend.Item.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Item/backend.Item.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Notifications/backend.Notifications.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Notifications/backend.Notifications.main.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Shared/backend.Shared.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Shared/backend.Shared.main.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/UserAndAuthentication/backend.UserAndAuthentication.main.iml" filepath="$PROJECT_DIR$/.idea/modules/UserAndAuthentication/backend.UserAndAuthentication.main.iml" />
     </modules>

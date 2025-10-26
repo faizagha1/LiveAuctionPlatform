@@ -25,8 +25,11 @@ public class JwtService {
     @Value("${app.jwt.secret}")
     private String secretKey;
 
-    @Value("${app.jwt.expiration}")
-    private long jwtExpiration;
+    @Value("${app.jwt.access-token-expiration}")
+    private long accessTokenExpiration;
+
+    @Value("${app.jwt.refresh-token-expiration}")
+    private long refreshTokenExpiration;
 
     /**
      * Extract user ID (from token subject)
@@ -48,7 +51,7 @@ public class JwtService {
      * Subject = userId (UUID)
      * Claims = roles, username
      */
-    public String generateToken(UserDetails userDetails) {
+    public String generateAccessToken(UserDetails userDetails) {
         UserEntity user = (UserEntity) userDetails;
         Map<String, Object> claims = new HashMap<>();
 
@@ -59,13 +62,22 @@ public class JwtService {
         claims.put("roles", roles);
         claims.put("username", user.getUsername());
 
-        return buildToken(claims, user);
+        return buildToken(claims, user, accessTokenExpiration);
+    }
+
+    public String generateRefreshToken(UserDetails userDetails) {
+        UserEntity user = (UserEntity) userDetails;
+        Map<String, Object> claims = new HashMap<>();
+
+        claims.put("username", user.getUsername());
+
+        return buildToken(claims, user, refreshTokenExpiration);
     }
 
     /**
      * Build the actual JWT token
      */
-    private String buildToken(Map<String, Object> extraClaims, UserEntity user) {
+    private String buildToken(Map<String, Object> extraClaims, UserEntity user, long jwtExpiration) {
         long now = System.currentTimeMillis();
         return Jwts.builder()
                 .claims(extraClaims)

@@ -8,14 +8,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/users")
+@RequestMapping("/api/v2/users")
 @RequiredArgsConstructor
 public class UserController {
 
     private final UserService userService;
 
     /**
-     * GET /api/v1/users/me
+     * GET /api/v2/users/me
      * Get current user's profile
      */
     @GetMapping("/me")

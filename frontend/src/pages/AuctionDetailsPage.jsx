@@ -19,7 +19,7 @@ function AuctionDetailsPage({ token, navigate, auctionId }) {
         setLoading(true);
         setError("");
         const safeId = encodeURIComponent(auctionId);
-        const url = `http://localhost:8082/api/v1/auctions/${safeId}`;
+        const url = `http://localhost:8082/api/v2/auctions/${safeId}`;
         console.log("GET", url);
         try {
             const response = await fetch(url, {

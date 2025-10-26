@@ -1,0 +1,16 @@
+spring:
+  cloud:
+    function:
+      definition: handleUserEvent
+    stream:
+      bindings:
+        # Listen to user events
+        handleUserEvent-in-0:
+          destination: resource-events-exchange
+          group: notification-service
+      rabbit:
+        bindings:
+          handleUserEvent-in-0:
+            consumer:
+              exchangeType: topic
+              bindingRoutingKey: "user.*"

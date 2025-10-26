@@ -1,20 +1,13 @@
+# application.yml (SAME for Auth, Item, Auction services)
 spring:
   cloud:
     stream:
       bindings:
-        auctionEventChannel-out-0:
+        eventChannel-out-0:
           destination: resource-events-exchange
       rabbit:
         bindings:
-          auctionEventChannel-out-0:
+          eventChannel-out-0:
             producer:
               exchangeType: topic
               routing-key-expression: headers['routingKey']
-
-
-app:
-  bindings:
-    auction:
-      created:
-        routing-key: "auction.created"
-    auction-event-exchange: auctionEventChannel-out-0

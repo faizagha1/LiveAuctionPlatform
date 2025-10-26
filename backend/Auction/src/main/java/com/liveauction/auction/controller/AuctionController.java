@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/auctions")
+@RequestMapping("/api/v2/auctions")
 @RequiredArgsConstructor
 public class AuctionController {
     

@@ -36,7 +36,7 @@ public class UserEntity extends BaseEntity implements UserDetails {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
-    private UserStatus status = UserStatus.ACTIVE;
+    private UserStatus status = UserStatus.UNVERIFIED;
     
     @Column(precision = 3, scale = 2)
     private BigDecimal auctioneerRating;

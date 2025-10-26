@@ -17,7 +17,7 @@ function BrowseItemsPage({ token, user, navigate }) {
 
     const fetchItems = async () => {
         try {
-            const response = await fetch('http://localhost:8081/api/v1/items/listed-for-claims', {
+            const response = await fetch('http://localhost:8081/api/v2/items/listed-for-claims', {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (response.ok) {
@@ -40,7 +40,7 @@ function BrowseItemsPage({ token, user, navigate }) {
         }
 
         try {
-            const response = await fetch('http://localhost:8082/api/v1/auctions/claim', {
+            const response = await fetch('http://localhost:8082/api/v2/auctions/claim', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

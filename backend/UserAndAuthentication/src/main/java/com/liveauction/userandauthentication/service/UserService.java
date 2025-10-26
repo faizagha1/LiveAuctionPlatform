@@ -30,7 +30,7 @@ public class UserService {
     /**
      * Helper method to get current authenticated user
      */
-    private UserEntity getAuthenticatedUser() {
+    UserEntity getAuthenticatedUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         Object principal = authentication.getPrincipal();

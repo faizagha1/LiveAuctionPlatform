@@ -27,7 +27,7 @@ function LiveAuctionPage({ token, navigate, auctionId }) {
     const fetchAuctionDetails = async (auctionIdToFetch) => {
         try {
             const response = await fetch(
-                `http://localhost:8082/api/v1/auctions/${auctionIdToFetch}/public`
+                `http://localhost:8082/api/v2/auctions/${auctionIdToFetch}/public`
             );
             if (response.ok) {
                 const data = await response.json();
@@ -40,7 +40,7 @@ function LiveAuctionPage({ token, navigate, auctionId }) {
 
     const fetchCurrentBid = async (auctionIdToFetch) => {
         try {
-            const url = `http://localhost:8084/api/v1/auctions/${auctionIdToFetch}/current-bid`;
+            const url = `http://localhost:8084/api/v2/auctions/${auctionIdToFetch}/current-bid`;
             const response = await fetch(url);
             if (response.ok) {
                 const data = await response.json();
@@ -55,7 +55,7 @@ function LiveAuctionPage({ token, navigate, auctionId }) {
 
     const fetchBidHistory = async (auctionIdToFetch) => {
         try {
-            const url = `http://localhost:8084/api/v1/auctions/${auctionIdToFetch}/bids`;
+            const url = `http://localhost:8084/api/v2/auctions/${auctionIdToFetch}/bids`;
             const response = await fetch(url);
             if (response.ok) {
                 const data = await response.json();
