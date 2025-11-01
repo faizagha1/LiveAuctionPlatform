@@ -7,37 +7,41 @@ import com.liveauction.item.dto.response.ItemResponseAuctioneer;
 import com.liveauction.item.dto.response.ItemResponsePartial;
 import com.liveauction.item.dto.response.ItemResponsePublic;
 import com.liveauction.item.entity.ItemEntity;
-import lombok.RequiredArgsConstructor;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import com.liveauction.item.event.producer.ItemEventProducer;
+import com.liveauction.item.exceptions.BadRequestException;
+import com.liveauction.item.exceptions.ResourceConflictException;
+import com.liveauction.item.exceptions.ResourceNotFoundException;
+import com.liveauction.item.exceptions.UnauthorizedException;
 import com.liveauction.item.repository.ItemRepository;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class ItemService {
-    
-    private final ItemRepository itemRepository;
 
-    /**
-     * Create a new item
-     * - Get current user ID from SecurityContext
-     * - Build ItemEntity with status = APPROVED (V1: skip admin review)
-     * - Save to database
-     * - TODO: Publish ResourceCreatedEvent for Auth Service
-     */
+    private final ItemRepository itemRepository;
+    private final SecurityService securityService;
+    private final ItemEventProducer itemEventProducer;
+
     @Transactional
     public ItemResponse createItem(CreateItemRequest request) {
-        log.info("Creating item: {}", request.name());
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.info("User {} creating item: {}", currentUserId, request.name());
+
+        if (request.startingPrice().compareTo(request.reservePrice()) >= 0) {
+            throw new BadRequestException("Starting price must be less than reserve price");
+        }
+
         ItemEntity item = ItemEntity.builder()
-                .ownerId(getCurrentUserId())
+                .ownerId(currentUserId)
                 .name(request.name())
                 .description(request.description())
                 .category(request.category())
@@ -45,38 +49,38 @@ public class ItemService {
                 .startingPrice(request.startingPrice())
                 .reservePrice(request.reservePrice())
                 .bidIncrement(request.bidIncrement())
+                .status(ItemEntity.ItemStatus.DRAFT)
                 .build();
-        log.info("Built the item and now saving item to database");
+
+        log.info("Saving new item to database for user: {}", currentUserId);
         item = itemRepository.save(item);
-        log.info("Item saved with ID: {}", item.getId());
+        log.info("Item saved with ID: {}. Publishing event.", item.getId());
+
+        // Publish event
+//        itemEventProducer.itemCreated(item);
+
         return ItemResponse.fromEntity(item);
     }
 
-    /**
-     * Update an existing item
-     * - Verify item exists
-     * - Verify current user is the owner
-     * - Verify item status is DRAFT or APPROVED (can't edit if in auction)
-     * - Update fields
-     * - Save
-     */
     @Transactional
     public ItemResponse updateItem(UUID itemId, UpdateItemRequest request) {
-        log.info("Updating item: {}", itemId);
-        log.info("Trying to find the item in the database");
-        ItemEntity item = itemRepository.findById(itemId)
-                .orElseThrow(() -> new RuntimeException("Item not found"));
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.info("User {} updating item: {}", currentUserId, itemId);
+
+        ItemEntity item = findItemByIdOrThrow(itemId);
         log.info("Item found: {}", item.getName());
-        log.info("Checking if the current user is the owner of the item");
-        UUID currentUserId = getCurrentUserId();
+
         if (!item.getOwnerId().equals(currentUserId)) {
-            throw new RuntimeException("Unauthorized: Not the item owner, can not make changes");
+            log.warn("User {} does not own item {}. Update forbidden.", currentUserId, itemId);
+            throw new UnauthorizedException("You are not the owner of this item.");
         }
-        log.info("Current user is the owner, proceeding with update");
-        log.info("Checking status of item");
-        if (item.getStatus() != ItemEntity.ItemStatus.DRAFT && item.getStatus() != ItemEntity.ItemStatus.APPROVED) {
-            throw new RuntimeException("Item cannot be edited in its current status");
+        log.info("User {} is owner, proceeding with update", currentUserId);
+
+        if (item.getStatus() != ItemEntity.ItemStatus.DRAFT && item.getStatus() != ItemEntity.ItemStatus.REJECTED) {
+            log.warn("Item {} cannot be edited in its current status: {}", itemId, item.getStatus());
+            throw new ResourceConflictException("Item cannot be edited unless it is in DRAFT or REJECTED status");
         }
+
         log.info("Item status is valid for editing, updating fields");
         item.setName(request.name());
         item.setDescription(request.description());
@@ -85,85 +89,102 @@ public class ItemService {
         item.setStartingPrice(request.startingPrice());
         item.setReservePrice(request.reservePrice());
         item.setBidIncrement(request.bidIncrement());
-        log.info("Saving updated item to database");
+
+        log.info("Saving updated item to database: {}", item.getId());
         item = itemRepository.save(item);
-        log.info("Item updated successfully: {}", item.getId());
+
+        // Publish event
+//        itemEventProducer.itemUpdated(item);
+
         return ItemResponse.fromEntity(item);
     }
 
-    /**
-     * List all items owned by current user
-     */
-    public List<ItemResponsePartial> listMyItems() {
-        log.info("Finding current userid");
-        UUID userId = getCurrentUserId();
-        log.info("Current user id: {}", userId);
-        log.info("Fetching items for user from database with the userId: " + userId);
-        List<ItemEntity> items = itemRepository.findAllByOwnerId(userId)
-                .orElse(new ArrayList<>());
-        log.info("Found {} items for user", items.size());
-        List<ItemResponsePartial> response = items.stream()
-                .map(ItemResponsePartial::fromEntity)
-                .toList();
-        log.info("Mapped items to response DTOs");
-        return response;
+    @Transactional(readOnly = true)
+    public Page<ItemResponse> listMyItems(Pageable pageable) {
+        UUID userId = securityService.getCurrentUserId();
+        log.info("Fetching items for owner: {}", userId);
+        Page<ItemEntity> items = itemRepository.findAllByOwnerId(userId, pageable);
+        return items.map(ItemResponse::fromEntity);
     }
 
-    /**
-     * Get full item details (owner only)
-     */
+    @Transactional(readOnly = true)
     public ItemResponse getItemDetails(UUID itemId) {
-        ItemEntity item = itemRepository.findById(itemId)
-                .orElseThrow(() -> new RuntimeException("Item not found"));
-        UUID currentUserId = getCurrentUserId();
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.info("User {} fetching details for item: {}", currentUserId, itemId);
+
+        ItemEntity item = findItemByIdOrThrow(itemId);
+
         if (!item.getOwnerId().equals(currentUserId)) {
-            throw new RuntimeException("Unauthorized: Not the item owner");
+            log.warn("User {} does not own item {}. Access forbidden.", currentUserId, itemId);
+            throw new UnauthorizedException("You are not the owner of this item.");
         }
         return ItemResponse.fromEntity(item);
     }
 
+    @Transactional(readOnly = true)
     public ItemResponseAuctioneer getItemDetailsForAuctioneers(UUID itemId) {
-        ItemEntity item = itemRepository
-                .findById(itemId)
-                .orElseThrow(() -> new RuntimeException("No item found"));
+        log.info("Auctioneer fetching details for item: {}", itemId);
+        ItemEntity item = findItemByIdOrThrow(itemId);
+
         if (item.getStatus() != ItemEntity.ItemStatus.APPROVED) {
-            throw new RuntimeException("Item is not approved");
+            log.warn("Item {} is not in APPROVED state. Status: {}", itemId, item.getStatus());
+            throw new ResourceConflictException("Item is not approved for auction");
         }
         return ItemResponseAuctioneer.toResponse(item);
     }
 
-    /**
-     * Get public item details (anyone can view APPROVED items)
-     */
+    @Transactional(readOnly = true)
     public ItemResponsePublic getPublicItemDetails(UUID itemId) {
-        ItemEntity item = itemRepository
-                .findById(itemId)
-                .orElseThrow(() -> new RuntimeException("No item found"));
+        log.info("Fetching public details for item: {}", itemId);
+        ItemEntity item = findItemByIdOrThrow(itemId);
+
         if (item.getStatus() != ItemEntity.ItemStatus.APPROVED) {
-            throw new RuntimeException("Item is not available for public viewing");
+            log.warn("Public access denied for item {} (Status: {})", itemId, item.getStatus());
+            throw new ResourceConflictException("This item is not currently available for public viewing.");
         }
         return ItemResponsePublic.fromEntity(item);
     }
 
-    public List<ItemResponsePublic> getItemsListedForClaiming() {
-        List<ItemEntity> items = itemRepository
-                .findAllByStatusAndOwnerIdNot(
-                        ItemEntity.ItemStatus.APPROVED,
-                        getCurrentUserId()
-                );
-        return items.stream()
-                .map(ItemResponsePublic::fromEntity)
-                .toList();
+    @Transactional(readOnly = true)
+    public Page<ItemResponsePartial> getItemsListedForClaiming(Pageable pageable) {
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.info("User {} fetching items listed for claiming", currentUserId);
+
+        Page<ItemEntity> items = itemRepository
+                .findAllByStatusAndOwnerIdNot(ItemEntity.ItemStatus.APPROVED, currentUserId, pageable);
+        return items.map(ItemResponsePartial::fromEntity);
     }
 
-    /**
-     * Helper: Get current authenticated user ID
-     */
-    private UUID getCurrentUserId() {
-        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        if (principal instanceof UUID) {
-            return (UUID) principal;
+    @Transactional
+    public ItemResponse markForApproval(UUID itemId) {
+        UUID userId = securityService.getCurrentUserId();
+        log.info("User {} marking item for approval: {}", userId, itemId);
+
+        ItemEntity item = findItemByIdOrThrow(itemId);
+
+        if (!item.getOwnerId().equals(userId)) {
+            log.warn("User {} does not own item {}. Action forbidden.", userId, itemId);
+            throw new UnauthorizedException("You are not the owner of this item.");
         }
-        throw new RuntimeException("No authenticated user found");
+
+        if (item.getStatus() == ItemEntity.ItemStatus.PENDING_APPROVAL) {
+            throw new ResourceConflictException("Item is already pending approval");
+        }
+        if (item.getStatus() != ItemEntity.ItemStatus.DRAFT) {
+            throw new ResourceConflictException("Only DRAFT items can be submitted for approval");
+        }
+
+        item.setStatus(ItemEntity.ItemStatus.PENDING_APPROVAL);
+        item = itemRepository.save(item);
+        log.info("Item {} status set to {} ", item.getId(), item.getStatus());
+
+        // TODO: Publish an ItemSubmittedForReviewEvent
+
+        return ItemResponse.fromEntity(item);
+    }
+
+    private ItemEntity findItemByIdOrThrow(UUID itemId) {
+        return itemRepository.findById(itemId)
+                .orElseThrow(() -> new ResourceNotFoundException("Item", "id", itemId));
     }
 }

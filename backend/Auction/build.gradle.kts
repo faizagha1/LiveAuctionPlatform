@@ -41,6 +41,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-webflux")
     developmentOnly("org.springframework.boot:spring-boot-devtools")
+    implementation("com.bucket4j:bucket4j-core:8.3.0")
 
     implementation("org.springframework.cloud:spring-cloud-stream")
     implementation("org.springframework.cloud:spring-cloud-stream-binder-rabbit")

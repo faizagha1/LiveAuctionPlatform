@@ -1,16 +1,29 @@
 spring:
   cloud:
     function:
-      definition: handleUserEvent
+      # This tells Spring Cloud Stream to activate both message listeners.
+      definition: userVerificationConsumer;passwordResetConsumer
+
     stream:
       bindings:
-        # Listen to user events
-        handleUserEvent-in-0:
+        # Configuration for the 'userVerificationConsumer' bean
+        userVerificationConsumer-in-0:
+          destination: resource-events-exchange # The exchange to bind to
+          group: notification-service-v1        # Consumer group name
+
+        # Configuration for the 'passwordResetConsumer' bean
+        passwordResetConsumer-in-0:
           destination: resource-events-exchange
-          group: notification-service
+          group: notification-service-v1        # Same group, as it's one service
+
       rabbit:
         bindings:
-          handleUserEvent-in-0:
+          userVerificationConsumer-in-0:
             consumer:
               exchangeType: topic
-              bindingRoutingKey: "user.*"
+              bindingRoutingKey: "user.created"   # Binds to the 'user.created' routing key
+
+          passwordResetConsumer-in-0:
+            consumer:
+              exchangeType: topic
+              bindingRoutingKey: "password.reset" # Binds to the 'password.reset' routing key

@@ -2,6 +2,7 @@ package com.liveauction.userandauthentication.controller;
 
 import com.liveauction.shared.dto.response.ApiResponse;
 import com.liveauction.shared.dto.response.ErrorResponse;
+import com.liveauction.userandauthentication.exceptions.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -45,7 +46,7 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.error(errorResponse.message()));
+                .body(ApiResponse.error("Validation Failed", errorResponse));
     }
 
     /**
@@ -56,24 +57,107 @@ public class GlobalExceptionHandler {
             BadCredentialsException ex,
             WebRequest request
     ) {
-        log.warn("Failed login attempt: {}", ex.getMessage());
+        log.warn("Failed login attempt for request: {}", request.getDescription(false));
         return ResponseEntity
                 .status(HttpStatus.UNAUTHORIZED)
                 .body(ApiResponse.error("Invalid email or password"));
     }
 
+    /**
+     * Handle custom unauthorized exceptions
+     */
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnauthorizedException(
+            UnauthorizedException ex,
+            WebRequest request
+    ) {
+        log.warn("Unauthorized access attempt: {} - Request: {}", ex.getMessage(), request.getDescription(false));
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
 
     /**
-     * Handle all other exceptions
+     * Handle resource not found exceptions
+     */
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleResourceNotFound(
+            ResourceNotFoundException ex,
+            WebRequest request
+    ) {
+        log.warn("Resource not found: {} - Request: {}", ex.getMessage(), request.getDescription(false));
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
+     * Handle bad request exceptions (e.g., invalid tokens, bad input)
+     */
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBadRequest(
+            BadRequestException ex,
+            WebRequest request
+    ) {
+        log.warn("Bad request: {} - Request: {}", ex.getMessage(), request.getDescription(false));
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
+     * Handle duplicate resource exceptions (e.g., email/username exists)
+     */
+    @ExceptionHandler(DuplicateResourceException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDuplicateResource(
+            DuplicateResourceException ex,
+            WebRequest request
+    ) {
+        log.warn("Duplicate resource: {} - Request: {}", ex.getMessage(), request.getDescription(false));
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
+     * Handle resource conflict exceptions (e.g., invalid state)
+     */
+    @ExceptionHandler(ResourceConflictException.class)
+    public ResponseEntity<ApiResponse<Void>> handleResourceConflict(
+            ResourceConflictException ex,
+            WebRequest request
+    ) {
+        log.warn("Resource conflict: {} - Request: {}", ex.getMessage(), request.getDescription(false));
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
+     * Handle failed operation exceptions
+     */
+    @ExceptionHandler(OperationFailedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOperationFailed(
+            OperationFailedException ex,
+            WebRequest request
+    ) {
+        log.error("Operation failed: {} - Request: {}", ex.getMessage(), request.getDescription(false), ex);
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    /**
+     * Handle all other unexpected exceptions
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGenericException(
             Exception ex,
             WebRequest request
     ) {
-        log.error("Unexpected error: ", ex);
+        log.error("Unexpected error occurred: {}", request.getDescription(false), ex);
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error("An unexpected error occurred"));
+                .body(ApiResponse.error("An unexpected internal error occurred. Please try again later."));
     }
 }

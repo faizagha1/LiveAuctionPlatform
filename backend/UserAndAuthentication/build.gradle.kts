@@ -34,6 +34,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("com.bucket4j:bucket4j-core:8.3.0")
 
     // Spring Cloud Stream + RabbitMQ Binder
     implementation("org.springframework.cloud:spring-cloud-stream")

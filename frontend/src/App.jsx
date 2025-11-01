@@ -1,142 +1,303 @@
-import { useState, useEffect } from 'react';
-import AuthPage from './pages/AuthPage';
+import React, { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { ToastProvider } from './components/ui/Toast';
+import useAuthStore from './store/authStore';
+import useRefreshToken from './hooks/useRefreshToken';
+import RoleGuard from './components/layout/RoleGuard';
+
+// Auth Pages
+import LoginPage from './pages/auth/LoginPage';
+import RegisterPage from './pages/auth/RegisterPage';
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
+import ResetPasswordPage from './pages/auth/ResetPasswordPage';
+
+// Dashboard
 import DashboardPage from './pages/DashboardPage';
-import ItemsPage from './pages/ItemsPage';
-import CreateItemPage from './pages/CreateItemPage';
-import EditItemPage from './pages/EditItemPage';
-import ItemDetailsPage from './pages/ItemDetailsPage';
-import AuctionsPage from './pages/AuctionsPage';
-import CreateAuctionPage from './pages/CreateAuctionPage';
-import AuctionDetailsPage from './pages/AuctionDetailsPage';
-import LiveAuctionPage from './pages/LiveAuctionPage';
-import ClaimsPage from './pages/ClaimsPage';
-import BrowseItemsPage from './pages/BrowseItemsPage';
-import BrowseAuctionsPage from './pages/BrowseAuctionsPage';
-import Navbar from './components/layout/Navbar';
-import Sidebar from './components/layout/Sidebar';
 
-function App() {
-    const [currentPage, setCurrentPage] = useState('dashboard');
-    const [pageParams, setPageParams] = useState({});
-    const [pageHistory, setPageHistory] = useState({});
-    const [token, setToken] = useState(null);
-    const [user, setUser] = useState(null);
-    const [sidebarOpen, setSidebarOpen] = useState(false);
+// Seller Pages
+import MyItemsPage from './pages/seller/MyItemsPage';
+import CreateItemPage from './pages/seller/CreateItemPage';
+import ItemClaimsPage from './pages/seller/ItemClaimsPage';
 
-    useEffect(() => {
-        const savedToken = localStorage.getItem('token');
-        if (savedToken) {
-            setToken(savedToken);
-            fetchUserProfile(savedToken);
-        } else {
-            setCurrentPage('auth');
-        }
-    }, []);
+// Auctioneer Pages
+import AuctioneerApplicationPage from './pages/auctioneer/AuctioneerApplicationPage';
+import ClaimMarketplacePage from './pages/auctioneer/ClaimMarketplacePage';
+import MyClaimsPage from './pages/auctioneer/MyClaimsPage';
+import CreateAuctionPage from './pages/auctioneer/CreateAuctionPage';
+import MyAuctionsPage from './pages/auctioneer/MyAuctionsPage';
 
-    const fetchUserProfile = async (authToken) => {
-        try {
-            const response = await fetch('http://localhost:8080/api/v2/users/me', {
-                headers: { Authorization: `Bearer ${authToken}` }
-            });
-            if (response.ok) {
-                const data = await response.json();
-                setUser(data.data);
-            }
-        } catch (error) {
-            console.error('Failed to fetch user profile:', error);
-        }
-    };
+// Admin Pages
+import AdminDashboard from './pages/admin/AdminDashboard';
+import ItemReviewPage from './pages/admin/ItemReviewPage';
+import AuctioneerQueuePage from './pages/admin/AuctioneerQueuePage';
+import AuctioneerReviewPage from './pages/admin/AuctioneerReviewPage';
 
-    const navigate = (page, params) => {
-        console.log('Navigate called:', { page, params, currentPageParams: pageParams });
+// Buyer Pages
+import BrowseAuctionsPage from './pages/buyer/BrowseAuctionsPage';
+import LiveAuctionPage from './pages/buyer/LiveAuctionPage';
 
-        setCurrentPage(page);
+// Protected Route Component
+const ProtectedRoute = ({ children }) => {
+    const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
-        // If params explicitly provided (even empty object), use them
-        if (params !== undefined) {
-            setPageHistory(prev => ({ ...prev, [page]: params }));
-            setPageParams(params);
-        }
-        // If no params argument, try to restore from history
-        else if (pageHistory[page]) {
-            console.log('Restoring params from history:', pageHistory[page]);
-            setPageParams(pageHistory[page]);
-        }
-        // Otherwise keep current params (don't clear)
-        else {
-            console.log('Keeping current params');
-        }
-
-        setSidebarOpen(false);
-    };
-
-    const handleLogin = (newToken) => {
-        localStorage.setItem('token', newToken);
-        setToken(newToken);
-        fetchUserProfile(newToken);
-        navigate('dashboard');
-    };
-
-    const handleLogout = () => {
-        localStorage.removeItem('token');
-        setToken(null);
-        setUser(null);
-        navigate('auth');
-    };
-
-    if (!token || currentPage === 'auth') {
-        return <AuthPage onLogin={handleLogin} />;
+    if (!isAuthenticated) {
+        return <Navigate to="/login" replace />;
     }
 
-    const renderPage = () => {
-        switch (currentPage) {
-            case 'dashboard':
-                return <DashboardPage user={user} navigate={navigate} />;
-            case 'items':
-                return <ItemsPage token={token} navigate={navigate} />;
-            case 'create-item':
-                return <CreateItemPage token={token} navigate={navigate} />;
-            case 'edit-item':
-                return <EditItemPage token={token} navigate={navigate} itemId={pageParams.itemId} />;
-            case 'item-details':
-                return <ItemDetailsPage token={token} navigate={navigate} itemId={pageParams.itemId} />;
-            case 'browse-items':
-                return <BrowseItemsPage token={token} user={user} navigate={navigate} />;
-            case 'auctions':
-                return <AuctionsPage token={token} navigate={navigate} />;
-            case 'create-auction':
-                return <CreateAuctionPage token={token} navigate={navigate} claimId={pageParams.claimId} />;
-            case 'auction-details':
-                return <AuctionDetailsPage token={token} navigate={navigate} auctionId={pageParams.auctionId} />;
-            case 'live-auction':
-                return <LiveAuctionPage token={token} navigate={navigate} auctionId={pageParams.auctionId} />;
-            case 'browse-auctions':
-                return <BrowseAuctionsPage token={token} navigate={navigate} />;
-            case 'claims':
-                return <ClaimsPage token={token} navigate={navigate} user={user} />;
-            default:
-                return <DashboardPage user={user} navigate={navigate} />;
-        }
-    };
+    return children;
+};
+
+// Public Only Route (redirect to dashboard if authenticated)
+const PublicOnlyRoute = ({ children }) => {
+    const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+
+    if (isAuthenticated) {
+        return <Navigate to="/dashboard" replace />;
+    }
+
+    return children;
+};
+
+function App() {
+    const checkAuth = useAuthStore((state) => state.checkAuth);
+    const { hasRole } = useAuthStore();
+
+    // Check auth status on mount
+    useEffect(() => {
+        checkAuth();
+    }, [checkAuth]);
+
+    // Setup token refresh
+    useRefreshToken();
 
     return (
-        <div className="min-h-screen bg-gray-50">
-            <Navbar user={user} onLogout={handleLogout} onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
+        <BrowserRouter>
+            <ToastProvider>
+                <Routes>
+                    {/* Public Routes (redirect if authenticated) */}
+                    <Route
+                        path="/login"
+                        element={
+                            <PublicOnlyRoute>
+                                <LoginPage />
+                            </PublicOnlyRoute>
+                        }
+                    />
+                    <Route
+                        path="/register"
+                        element={
+                            <PublicOnlyRoute>
+                                <RegisterPage />
+                            </PublicOnlyRoute>
+                        }
+                    />
+                    <Route
+                        path="/forgot-password"
+                        element={
+                            <PublicOnlyRoute>
+                                <ForgotPasswordPage />
+                            </PublicOnlyRoute>
+                        }
+                    />
+                    <Route
+                        path="/reset-password"
+                        element={
+                            <PublicOnlyRoute>
+                                <ResetPasswordPage />
+                            </PublicOnlyRoute>
+                        }
+                    />
 
-            <div className="flex">
-                <Sidebar
-                    isOpen={sidebarOpen}
-                    onClose={() => setSidebarOpen(false)}
-                    navigate={navigate}
-                    currentPage={currentPage}
-                    user={user}
-                />
+                    {/* Protected Routes */}
+                    <Route
+                        path="/dashboard"
+                        element={
+                            <ProtectedRoute>
+                                <DashboardPage />
+                            </ProtectedRoute>
+                        }
+                    />
 
-                <main className="flex-1 p-6 lg:ml-64">
-                    {renderPage()}
-                </main>
-            </div>
-        </div>
+                    {/* Seller Routes */}
+                    <Route
+                        path="/seller/my-items"
+                        element={
+                            <ProtectedRoute>
+                                {hasRole('ADMIN') ? (
+                                    <Navigate to="/admin/dashboard" replace />
+                                ) : (
+                                    <MyItemsPage />
+                                )}
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/seller/create-item"
+                        element={
+                            <ProtectedRoute>
+                                {hasRole('ADMIN') ? (
+                                    <Navigate to="/admin/dashboard" replace />
+                                ) : (
+                                    <CreateItemPage />
+                                )}
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/seller/edit-item/:itemId"
+                        element={
+                            <ProtectedRoute>
+                                {hasRole('ADMIN') ? (
+                                    <Navigate to="/admin/dashboard" replace />
+                                ) : (
+                                    <CreateItemPage />
+                                )}
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/seller/item-claims/:itemId"
+                        element={
+                            <ProtectedRoute>
+                                {hasRole('ADMIN') ? (
+                                    <Navigate to="/admin/dashboard" replace />
+                                ) : (
+                                    <ItemClaimsPage />
+                                )}
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Auctioneer Routes - With Role Guard */}
+                    <Route
+                        path="/auctioneer/apply"
+                        element={
+                            <ProtectedRoute>
+                                {hasRole('ADMIN') ? (
+                                    <Navigate to="/admin/dashboard" replace />
+                                ) : (
+                                    <AuctioneerApplicationPage />
+                                )}
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/auctioneer/marketplace"
+                        element={
+                            <ProtectedRoute>
+                                <RoleGuard requiredRole="AUCTIONEER">
+                                    <ClaimMarketplacePage />
+                                </RoleGuard>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/auctioneer/my-claims"
+                        element={
+                            <ProtectedRoute>
+                                <RoleGuard requiredRole="AUCTIONEER">
+                                    <MyClaimsPage />
+                                </RoleGuard>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/auctioneer/create-auction/:claimId/:itemId"
+                        element={
+                            <ProtectedRoute>
+                                <RoleGuard requiredRole="AUCTIONEER">
+                                    <CreateAuctionPage />
+                                </RoleGuard>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/auctioneer/my-auctions"
+                        element={
+                            <ProtectedRoute>
+                                <RoleGuard requiredRole="AUCTIONEER">
+                                    <MyAuctionsPage />
+                                </RoleGuard>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Admin Routes - With Role Guard */}
+                    <Route
+                        path="/admin/dashboard"
+                        element={
+                            <ProtectedRoute>
+                                <RoleGuard requiredRole="ADMIN" redirectTo="/dashboard">
+                                    <AdminDashboard />
+                                </RoleGuard>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/admin/items"
+                        element={
+                            <ProtectedRoute>
+                                <RoleGuard requiredRole="ADMIN" redirectTo="/dashboard">
+                                    <ItemReviewPage />
+                                </RoleGuard>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/admin/applications"
+                        element={
+                            <ProtectedRoute>
+                                <RoleGuard requiredRole="ADMIN" redirectTo="/dashboard">
+                                    <AuctioneerQueuePage />
+                                </RoleGuard>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/admin/applications/:applicationId"
+                        element={
+                            <ProtectedRoute>
+                                <RoleGuard requiredRole="ADMIN" redirectTo="/dashboard">
+                                    <AuctioneerReviewPage />
+                                </RoleGuard>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Buyer Routes */}
+                    <Route
+                        path="/auctions"
+                        element={
+                            <ProtectedRoute>
+                                {hasRole('ADMIN') ? (
+                                    <Navigate to="/admin/dashboard" replace />
+                                ) : (
+                                    <BrowseAuctionsPage />
+                                )}
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/auction/:auctionId/live"
+                        element={
+                            <ProtectedRoute>
+                                {hasRole('ADMIN') ? (
+                                    <Navigate to="/admin/dashboard" replace />
+                                ) : (
+                                    <LiveAuctionPage />
+                                )}
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Default redirect */}
+                    <Route path="/" element={<Navigate to="/login" replace />} />
+
+                    {/* 404 - Redirect to login */}
+                    <Route path="*" element={<Navigate to="/login" replace />} />
+                </Routes>
+            </ToastProvider>
+        </BrowserRouter>
     );
 }
 

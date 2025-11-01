@@ -7,23 +7,25 @@ import com.liveauction.auction.dto.request.UpdateAuctionRequest;
 import com.liveauction.auction.dto.response.*;
 import com.liveauction.auction.entity.AuctionEntity;
 import com.liveauction.auction.entity.ItemClaimEntity;
+import com.liveauction.auction.event.producer.AuctionEventProducer;
+import com.liveauction.auction.exceptions.BadRequestException;
+import com.liveauction.auction.exceptions.ResourceConflictException;
+import com.liveauction.auction.exceptions.ResourceNotFoundException;
+import com.liveauction.auction.exceptions.UnauthorizedException;
 import com.liveauction.auction.repository.AuctionRepository;
 import com.liveauction.auction.repository.ItemClaimRepository;
 import com.liveauction.shared.constants.PermissionConstants;
-import com.liveauction.shared.constants.RoleConstants;
+import com.liveauction.shared.events.AuctionEvents.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -33,341 +35,305 @@ public class AuctionService {
     
     private final ItemClaimRepository claimRepository;
     private final AuctionRepository auctionRepository;
+    private final SecurityService securityService;
+    private final AuctionEventProducer auctionEventProducer;
 
-    /**
-     * Auctioneer claims an item
-     * - Verify user has ROLE_AUCTIONEER
-     * - Create ItemClaimEntity with status PENDING
-     * - Save and return
-     */
+    private static final long MIN_AUCTION_DURATION_SECONDS = 10800; // 3 hours
+    private static final long MIN_CANCEL_DURATION_HOURS = 3; // 3 hours
+
     @Transactional
-    public ClaimResponse claimItem(ClaimItemRequest request) {
-        log.info("Claiming item: {}", request.itemId());
-        log.info("Item owner: {}", request.itemOwnerId());
-        log.info("Checking if a claim on this item by the same user already exists");
-        if(claimRepository.existsByItemIdAndAuctioneerId(
-                request.itemId(),
-                getCurrentUserId()
-        )){
-            log.error("A claim on this item by the same user already exists");
-            throw new RuntimeException("You have already claimed this item");
+    public ClaimResponse claimItem(ClaimItemRequest request, UUID itemId) {
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.info("User {} claiming item: {}", currentUserId, itemId);
+
+        if (!securityService.hasPermission(PermissionConstants.CLAIM_ITEM)) {
+            log.warn("User {} does not have permission '{}'", currentUserId, PermissionConstants.CLAIM_ITEM);
+            throw new UnauthorizedException("User does not have permission to claim items");
         }
 
-        if(claimRepository.existsByItemIdAndStatus(request.itemId(), ItemClaimEntity.ClaimStatus.APPROVED)){
-            throw new RuntimeException("This item is already claimed");
+        if (claimRepository.existsByItemIdAndAuctioneerId(itemId, currentUserId)) {
+            log.warn("User {} has already claimed item {}", currentUserId, itemId);
+            throw new ResourceConflictException("You have already claimed this item");
         }
 
-        log.info("Checking if current user is an auctioneer and rejecting request if they are not");
-        String permissionToClaimItem = PermissionConstants.CLAIM_ITEM;
-        if(!getCurrentUserRoles().contains(permissionToClaimItem)){
-            log.error("Current user is not an auctioneer");
-            throw new RuntimeException("User does not have auctioneer role");
+        if (claimRepository.existsByItemIdAndStatus(itemId, ItemClaimEntity.ClaimStatus.APPROVED)) {
+            log.warn("Item {} is already claimed by another auctioneer", itemId);
+            throw new ResourceConflictException("This item has already been claimed and approved for another auctioneer");
         }
-        log.info("By auctioneer: {}", getCurrentUserId());
-        UUID userId = getCurrentUserId();
-        log.info("Creating ItemClaimEntity with PENDING status");
-        ItemClaimEntity itemClaim = ItemClaimEntity
-                .builder()
-                .itemId(request.itemId())
+
+        ItemClaimEntity itemClaim = ItemClaimEntity.builder()
+                .itemId(itemId)
                 .itemOwnerId(request.itemOwnerId())
-                .auctioneerId(userId)
+                .auctioneerId(currentUserId)
                 .auctioneerMessage(request.auctioneerMessage())
                 .status(ItemClaimEntity.ClaimStatus.PENDING)
                 .build();
-        log.info("Saving claim to repository");
+        
         itemClaim = claimRepository.save(itemClaim);
-        log.info("Returning ClaimResponse");
+        log.info("Claim {} saved successfully for user {}", itemClaim.getId(), currentUserId);
         return ClaimResponse.fromEntity(itemClaim);
     }
 
-    /**
-     * Seller reviews a claim (approve/reject)
-     * - Verify claim exists
-     * - Verify current user is the item owner
-     * - Verify claim status is PENDING
-     * - If approved: set this claim to APPROVED, reject all other pending claims for same item
-     * - If rejected: set this claim to REJECTED
-     * - Save and return
-     */
     @Transactional
     public ClaimResponse reviewClaim(UUID claimId, ReviewClaimRequest request) {
-        log.info("Reviewing claim: {}", claimId);
-        log.info("Checking to see if claim exists");
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.info("User {} reviewing claim: {}", currentUserId, claimId);
+
         ItemClaimEntity claim = claimRepository.findById(claimId)
-                .orElseThrow(() -> new RuntimeException("Claim not found"));
-        log.info("Verifying current user is the item owner");
-        if(!getCurrentUserId().equals(claim.getItemOwnerId())){
-            log.error("Current user is not the item owner");
-            throw new RuntimeException("User is not the item owner");
+                .orElseThrow(() -> new ResourceNotFoundException("ItemClaim", "id", claimId));
+
+        if (!currentUserId.equals(claim.getItemOwnerId())) {
+            log.warn("User {} is not the owner of item {}. Review forbidden.", currentUserId, claim.getItemId());
+            throw new UnauthorizedException("You are not the owner of this item and cannot review claims.");
         }
-        log.info("Verifying claim status is PENDING");
-        if(claim.getStatus() != ItemClaimEntity.ClaimStatus.PENDING){
-            log.error("Claim status is not PENDING");
-            throw new RuntimeException("Claim is not in PENDING status");
+
+        if (claim.getStatus() != ItemClaimEntity.ClaimStatus.PENDING) {
+            log.warn("Claim {} is not in PENDING status. Current status: {}", claimId, claim.getStatus());
+            throw new ResourceConflictException("This claim has already been reviewed.");
         }
-        if(request.approve()){
-            log.info("Approving claim");
+
+        claim.setSellerMessage(request.sellerMessage());
+        claim.setReviewedAt(Instant.now());
+
+        if (request.approve()) {
+            log.info("Approving claim {}", claimId);
             claim.setStatus(ItemClaimEntity.ClaimStatus.APPROVED);
-            claim.setSellerMessage(request.sellerMessage());
-            log.info("Rejecting all other pending claims for the same item");
+            claim = claimRepository.save(claim);
+
+            log.info("Rejecting all other pending claims for item {}", claim.getItemId());
             List<ItemClaimEntity> otherClaims = claimRepository.findByItemIdAndStatus(
                     claim.getItemId(),
                     ItemClaimEntity.ClaimStatus.PENDING
             );
-            for(ItemClaimEntity otherClaim : otherClaims){
-                if(!otherClaim.getId().equals(claimId)){
+            
+            otherClaims.stream()
+                .filter(otherClaim -> !otherClaim.getId().equals(claimId))
+                .forEach(otherClaim -> {
                     otherClaim.setStatus(ItemClaimEntity.ClaimStatus.REJECTED);
-                    otherClaim.setSellerMessage("Another auctioneer's claim was approved");
+                    otherClaim.setSellerMessage("Another auctioneer's claim was approved.");
                     otherClaim.setReviewedAt(Instant.now());
                     claimRepository.save(otherClaim);
-                }
-            }
+                    log.info("Auto-rejected claim {}", otherClaim.getId());
+                });
         } else {
-            log.info("Rejecting claim");
+            log.info("Rejecting claim {}", claimId);
             claim.setStatus(ItemClaimEntity.ClaimStatus.REJECTED);
-            claim.setSellerMessage(request.sellerMessage());
+            claim = claimRepository.save(claim);
         }
-        claim.setReviewedAt(Instant.now());
-        log.info("Saving reviewed claim to repository");
-        claim =  claimRepository.save(claim);
-        log.info("Returning ClaimResponse");
+
         return ClaimResponse.fromEntity(claim);
     }
 
-    /**
-     * Create auction from approved claim
-     * - Verify claim exists and is APPROVED
-     * - Verify current user is the auctioneer who made the claim
-     * - Verify endTime > startTime
-     * - Create AuctionEntity with status SCHEDULED
-     * - Save and return
-     * - TODO: Publish ResourceCreatedEvent for Auth Service
-     */
     @Transactional
     public AuctionResponse createAuction(UUID claimId, CreateAuctionRequest request) {
-        log.info("Creating auction from claim: {}", claimId);
-        log.info("Checking if current user has role auctioneer");
-        String createAuctionPermission = PermissionConstants.CREATE_AUCTION;
-        if(!getCurrentUserRoles().contains(createAuctionPermission)){
-            log.error("Current user does not have auctioneer role");
-            throw new RuntimeException("User does not have auctioneer role");
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.info("User {} creating auction from claim: {}", currentUserId, claimId);
+
+        if (!securityService.hasPermission(PermissionConstants.CREATE_AUCTION)) {
+            log.warn("User {} does not have permission '{}'", currentUserId, PermissionConstants.CREATE_AUCTION);
+            throw new UnauthorizedException("User does not have permission to create auctions");
         }
-        log.info("Checking if the current user is the auction owner");
-        UUID userId = getCurrentUserId();
-        log.info("Finding claim by ID");
+        
         ItemClaimEntity claim = claimRepository.findById(claimId)
-                .orElseThrow(() -> new RuntimeException("Claim not found"));
-        if(!claim.getAuctioneerId().equals(userId)){
-            log.error("Current user is not the auctioneer who made the claim");
-            throw new RuntimeException("User is not the auctioneer who made the claim");
+                .orElseThrow(() -> new ResourceNotFoundException("ItemClaim", "id", claimId));
+
+        if (!claim.getAuctioneerId().equals(currentUserId)) {
+            log.warn("User {} is not the auctioneer for claim {}. Forbidden.", currentUserId, claimId);
+            throw new UnauthorizedException("You are not the auctioneer who made this claim.");
         }
-        log.info("Verifying claim is APPROVED");
-        if(claim.getStatus() != ItemClaimEntity.ClaimStatus.APPROVED){
-            log.error("Claim is not APPROVED");
-            throw new RuntimeException("Claim is not APPROVED");
+        
+        if (claim.getStatus() != ItemClaimEntity.ClaimStatus.APPROVED) {
+            log.warn("Claim {} is not in APPROVED status. Current status: {}", claimId, claim.getStatus());
+            throw new ResourceConflictException("Auction can only be created from an APPROVED claim.");
         }
-        log.info("Validating endTime is after startTime");
-        if(Duration.between(request.startTime() , request.endTime()).getSeconds() < 10800){
-            log.error("endTime must be at least 3 hours after startTime");
-            throw new RuntimeException("Every auction must be at least 3 hours long");
+
+        if (Duration.between(request.startTime(), request.endTime()).getSeconds() < MIN_AUCTION_DURATION_SECONDS) {
+            log.warn("Invalid auction duration for claim {}", claimId);
+            throw new BadRequestException("Auction duration must be at least 3 hours.");
         }
-        log.info("Creating AuctionEntity with SCHEDULED status");
-        AuctionEntity auction = AuctionEntity
-                .builder()
+
+        AuctionEntity auction = AuctionEntity.builder()
                 .title(request.title())
                 .itemId(claim.getItemId())
-                .auctioneerId(userId)
+                .auctioneerId(currentUserId)
                 .claimId(claimId)
+                .status(AuctionEntity.AuctionStatus.SCHEDULED)
                 .startingPrice(request.startingPrice())
                 .reservePrice(request.reservePrice())
                 .bidIncrement(request.bidIncrement())
                 .startTime(request.startTime())
                 .endTime(request.endTime())
                 .build();
-        log.info("Saving auction to repository");
+        
         auction = auctionRepository.save(auction);
-        log.info("Returning AuctionResponse");
+        log.info("Auction {} created successfully from claim {}", auction.getId(), claimId);
+
+        // Publish the event
+        auctionEventProducer.publishAuctionCreated(
+            new AuctionCreatedEvent(
+                    auction.getId().toString(),
+                    auction.getItemId().toString(),
+                    auction.getAuctioneerId().toString(),
+                    auction.getStartingPrice().doubleValue(),
+                    auction.getReservePrice() != null ? auction.getReservePrice().doubleValue() : 0.0,
+                    auction.getBidIncrement().doubleValue(),
+                    auction.getStartTime(),
+                    auction.getEndTime()
+            )
+        );
+
         return AuctionResponse.fromEntity(auction);
     }
 
-    /**
-     * Update auction (only SCHEDULED auctions)
-     * - Verify auction exists
-     * - Verify current user is the auctioneer
-     * - Verify status is SCHEDULED
-     * - Update title, startTime, endTime
-     * - Save and return
-     */
     @Transactional
     public AuctionResponse updateAuction(UUID auctionId, UpdateAuctionRequest request) {
-        log.info("Updating auction: {}", auctionId);
-        AuctionEntity auction = auctionRepository
-                .findById(auctionId)
-                .orElseThrow(() -> new RuntimeException("Auction not found"));
-        if(!getCurrentUserRoles().contains(PermissionConstants.EDIT_AUCTION)){
-            log.error("Current user does not have permission to edit auctions");
-            throw new RuntimeException("User does not have permission to edit auctions");
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.info("User {} updating auction: {}", currentUserId, auctionId);
+
+        AuctionEntity auction = findAuctionByIdOrThrow(auctionId);
+
+        if (!securityService.hasPermission(PermissionConstants.EDIT_AUCTION)) {
+             log.warn("User {} does not have permission '{}'", currentUserId, PermissionConstants.EDIT_AUCTION);
+            throw new UnauthorizedException("User does not have permission to edit auctions");
         }
-        log.info("Verifying its a scheduled auction that can be updated");
-        if(!auction.getStatus().equals(AuctionEntity.AuctionStatus.SCHEDULED)){
-            log.error("Auction status is not SCHEDULED");
-            throw new RuntimeException("Only SCHEDULED auctions can be updated");
+        
+        if (!auction.getAuctioneerId().equals(currentUserId)) {
+            log.warn("User {} is not the auctioneer for auction {}. Forbidden.", currentUserId, auctionId);
+            throw new UnauthorizedException("You are not the auctioneer for this auction.");
         }
-        log.info("Verifying if auction starts within the next 3 hours and if so, it cannot be edited");
-        if(Duration.between(Instant.now() , auction.getStartTime()).toHours() < 3){
-            log.error("Auction starts within the next 3 hours and cannot be edited");
-            throw new RuntimeException("Auctions starting within 3 hours cannot be edited");
+
+        if (auction.getStatus() != AuctionEntity.AuctionStatus.SCHEDULED) {
+            log.warn("Auction {} is not SCHEDULED. Status: {}", auctionId, auction.getStatus());
+            throw new ResourceConflictException("Only SCHEDULED auctions can be updated.");
         }
-        log.info("Verifying current user is the auctioneer");
-        if(!getCurrentUserId().equals(auction.getAuctioneerId())){
-            log.error("Current user is not the auctioneer");
-            throw new RuntimeException("User is not the auctioneer");
+        
+        if (Duration.between(Instant.now(), auction.getStartTime()).toHours() < MIN_CANCEL_DURATION_HOURS) {
+            log.warn("Auction {} starts within 3 hours and cannot be edited", auctionId);
+            throw new ResourceConflictException("Auctions starting within 3 hours cannot be edited.");
         }
-        log.info("Checking if the new start time and new end times still have a 3 hour gap");
-        if(Duration.between(request.startTime() , request.endTime()).toSeconds() < 10800){
-            log.info("endTime must be at least 3 hours after startTime");
-            throw new RuntimeException("Every auction must be at least 3 hours long");
+        
+        if (Duration.between(request.startTime(), request.endTime()).getSeconds() < MIN_AUCTION_DURATION_SECONDS) {
+            log.warn("Invalid new auction duration for auction {}", auctionId);
+            throw new BadRequestException("Auction duration must be at least 3 hours.");
         }
-        log.info("All security measures take, proceeding to update auction details");
+        
         auction.setTitle(request.title());
         auction.setStartTime(request.startTime());
         auction.setEndTime(request.endTime());
-        log.info("Saving updated auction to repository");
+        
         auction = auctionRepository.save(auction);
-        log.info("Returning AuctionResponse");
+        log.info("Auction {} updated successfully", auctionId);
         return AuctionResponse.fromEntity(auction);
     }
 
-    /**
-     * Cancel auction (only SCHEDULED, >1 hour before start)
-     * - Verify auction exists
-     * - Verify current user is the auctioneer
-     * - Verify status is SCHEDULED
-     * - Verify startTime is >1 hour away
-     * - Set status to CANCELLED
-     * - Save and return
-     */
     @Transactional
     public AuctionResponse cancelAuction(UUID auctionId) {
-        log.info("Cancelling auction: {}", auctionId);
-        AuctionEntity auction = auctionRepository
-                .findById(auctionId)
-                .orElseThrow(() -> new RuntimeException("Auction not found"));
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.info("User {} cancelling auction: {}", currentUserId, auctionId);
 
-        if(!getCurrentUserRoles().contains(PermissionConstants.CANCEL_AUCTION)){
-            log.error("Current user does not have permission to cancel auctions");
-            throw new RuntimeException("User does not have permission to cancel auctions");
+        AuctionEntity auction = findAuctionByIdOrThrow(auctionId);
+
+        if (!securityService.hasPermission(PermissionConstants.CANCEL_AUCTION)) {
+            log.warn("User {} does not have permission '{}'", currentUserId, PermissionConstants.CANCEL_AUCTION);
+            throw new UnauthorizedException("User does not have permission to cancel auctions");
         }
 
-        if(!auction.getAuctioneerId().equals(getCurrentUserId())){
-            log.error("Current user is not the auctioneer");
-            throw new RuntimeException("User is not the auctioneer");
+        if (!auction.getAuctioneerId().equals(currentUserId)) {
+            log.warn("User {} is not the auctioneer for auction {}. Forbidden.", currentUserId, auctionId);
+            throw new UnauthorizedException("You are not the auctioneer for this auction.");
         }
 
-        if(!auction.getStatus().equals(AuctionEntity.AuctionStatus.SCHEDULED)){
-            throw new RuntimeException("Only SCHEDULED auctions can be cancelled");
+        if (auction.getStatus() != AuctionEntity.AuctionStatus.SCHEDULED) {
+            log.warn("Auction {} is not SCHEDULED. Status: {}", auctionId, auction.getStatus());
+            throw new ResourceConflictException("Only SCHEDULED auctions can be cancelled.");
         }
 
-        if(Duration.between(Instant.now(), auction.getStartTime()).toHours() < 3){
-            throw new RuntimeException("Cannot cancel auctions starting within 3 hours");
+        if (Duration.between(Instant.now(), auction.getStartTime()).toHours() < MIN_CANCEL_DURATION_HOURS) {
+            log.warn("Auction {} starts within 3 hours and cannot be cancelled", auctionId);
+            throw new ResourceConflictException("Cannot cancel auctions starting within 3 hours.");
         }
 
         log.info("Canceling auction: {}", auctionId);
         auction.setStatus(AuctionEntity.AuctionStatus.CANCELLED);
+        
+        // Re-open the claim for other auctioneers by deleting the approved claim
         claimRepository.deleteById(auction.getClaimId());
+        log.info("Associated claim {} deleted, item is available again.", auction.getClaimId());
 
         auction = auctionRepository.save(auction);
+        
+        // TODO: Publish an AuctionCancelledEvent
+        
         return AuctionResponse.fromEntity(auction);
     }
 
-    /**
-     * List auctions by current auctioneer
-     */
-    public List<AuctionResponsePartial> listMyAuctions() {
-        if(!getCurrentUserRoles().contains(PermissionConstants.VIEW_AUCTION)){
-            log.error("Current user does not have permission to view auctions");
-            throw new RuntimeException("User does not have permission to view auctions");
-        }
-        UUID userId = getCurrentUserId();
-        List<AuctionEntity> myAuctions = auctionRepository.findAllByAuctioneerId(userId)
-                .orElse(new ArrayList<>());
-        return myAuctions.stream()
-                .map(AuctionResponsePartial::fromEntity)
-                .toList();
+    @Transactional(readOnly = true)
+    public Page<AuctionResponsePartial> listMyAuctions(Pageable pageable) {
+        UUID userId = securityService.getCurrentUserId();
+        log.info("Fetching auctions for auctioneer: {}", userId);
+        Page<AuctionEntity> myAuctions = auctionRepository.findAllByAuctioneerId(userId, pageable);
+        return myAuctions.map(AuctionResponsePartial::fromEntity);
     }
-
-    /**
-     * Get auction details (auctioneer only)
-     */
+    
+    @Transactional(readOnly = true)
     public AuctionResponse getAuctionDetails(UUID auctionId) {
-        AuctionEntity auction = auctionRepository
-                .findById(auctionId)
-                .orElseThrow(() -> new RuntimeException("Auction not found"));
-        if(!auction.getAuctioneerId().equals(getCurrentUserId())){
-            log.error("Current user is not the auctioneer");
-            throw new RuntimeException("User is not the auctioneer");
+        UUID currentUserId = securityService.getCurrentUserId();
+        AuctionEntity auction = findAuctionByIdOrThrow(auctionId);
+        
+        if (!auction.getAuctioneerId().equals(currentUserId)) {
+            log.warn("User {} is not the auctioneer for auction {}. Forbidden.", currentUserId, auctionId);
+            throw new UnauthorizedException("You are not the auctioneer for this auction.");
         }
         return AuctionResponse.fromEntity(auction);
     }
 
-    /**
-     * Get public auction details (anyone)
-     */
+    @Transactional(readOnly = true)
     public AuctionResponsePublic getPublicAuctionDetails(UUID auctionId) {
-        AuctionEntity auction = auctionRepository
-                .findById(auctionId)
-                .orElseThrow(() -> new RuntimeException("Auction not found"));
+        AuctionEntity auction = findAuctionByIdOrThrow(auctionId);
         return AuctionResponsePublic.fromEntity(auction);
     }
 
-    /**
-     * List auctions by status (public - for browsing)
-     */
-    public List<AuctionResponsePublic> listAuctionsByStatus(AuctionEntity.AuctionStatus status) {
-        List<AuctionEntity> auctions = auctionRepository.findAllByStatus(status)
-                .orElse(new ArrayList<>());
-        return auctions.stream()
-                .map(AuctionResponsePublic::fromEntity)
-                .toList();
+    @Transactional(readOnly = true)
+    public Page<AuctionResponsePublic> listAuctionsByStatus(AuctionEntity.AuctionStatus status, Pageable pageable) {
+        Page<AuctionEntity> auctions = auctionRepository.findAllByStatus(status, pageable);
+        return auctions.map(AuctionResponsePublic::fromEntity);
     }
 
+    @Transactional(readOnly = true)
     public List<ClaimResponse> listAllClaims(UUID itemId) {
-        List<ItemClaimEntity> claims = claimRepository.findByItemIdAndStatus(
-                itemId,
-                ItemClaimEntity.ClaimStatus.PENDING
-        );
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.info("User {} listing all claims for item: {}", currentUserId, itemId);
+        
+        // Find one claim to verify ownership. This is more efficient than loading all.
+        ItemClaimEntity claimCheck = claimRepository.findByItemIdAndStatus(itemId, ItemClaimEntity.ClaimStatus.PENDING)
+            .stream().findFirst().orElse(null);
+        
+        if (claimCheck != null && !claimCheck.getItemOwnerId().equals(currentUserId)) {
+             log.warn("User {} is not the owner of item {}. Forbidden.", currentUserId, itemId);
+             throw new UnauthorizedException("You are not the owner of this item.");
+        }
+        
+        // If the check passed (or no pending claims exist), return the list.
+        List<ItemClaimEntity> claims = (claimCheck == null) 
+            ? List.of() 
+            : claimRepository.findByItemIdAndStatus(itemId, ItemClaimEntity.ClaimStatus.PENDING);
+            
         return claims.stream()
                 .map(ClaimResponse::fromEntity)
                 .toList();
     }
 
-    public List<ClaimResponse> listAllClaimsOfUser() {
-        UUID userId = getCurrentUserId();
-        List<ItemClaimEntity> userClaims = claimRepository
-                .findAllByAuctioneerIdAndStatus(userId, ItemClaimEntity.ClaimStatus.APPROVED)
-                .orElse(new ArrayList<>());
-        return userClaims.stream()
-                .map(ClaimResponse::fromEntity)
-                .toList();
+    @Transactional(readOnly = true)
+    public Page<ClaimResponse> listAllClaimsOfUser(Pageable pageable) {
+        UUID userId = securityService.getCurrentUserId();
+        log.info("User {} listing their approved claims", userId);
+        Page<ItemClaimEntity> userClaims = claimRepository
+                .findAllByAuctioneerIdAndStatus(userId, ItemClaimEntity.ClaimStatus.APPROVED, pageable);
+        return userClaims.map(ClaimResponse::fromEntity);
     }
-
-    // Helper methods
-    private UUID getCurrentUserId() {
-        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        if (principal instanceof UUID) {
-            return (UUID) principal;
-        }
-        throw new RuntimeException("No authenticated user found");
-    }
-
-    private List<String> getCurrentUserRoles() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .toList();
-    }
-
-    private boolean hasRole(String role) {
-        return getCurrentUserRoles().contains(role);
+    
+    private AuctionEntity findAuctionByIdOrThrow(UUID auctionId) {
+        return auctionRepository.findById(auctionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Auction", "id", auctionId));
     }
 }

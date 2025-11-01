@@ -6,8 +6,6 @@ import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 public record ClaimItemRequest(
-    @NotNull(message = "Item ID is required")
-    UUID itemId,
     
     @NotNull(message = "Item owner ID is required")
     UUID itemOwnerId,

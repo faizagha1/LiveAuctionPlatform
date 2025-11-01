@@ -2,6 +2,8 @@ package com.liveauction.auction.repository;
 
 import com.liveauction.auction.entity.AuctionEntity;
 import com.liveauction.auction.entity.AuctionEntity.AuctionStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -12,16 +14,14 @@ import java.util.UUID;
 
 @Repository
 public interface AuctionRepository extends JpaRepository<AuctionEntity, UUID> {
-    
-    // Find auctions by auctioneer
+
     Optional<List<AuctionEntity>> findAllByAuctioneerId(UUID auctioneerId);
-    
-    // Find auctions by status (for public listing)
-    Optional<List<AuctionEntity>> findAllByStatus(AuctionStatus status);
-    
-    // Find SCHEDULED auctions that should start (for scheduled task)
-    List<AuctionEntity> findAllByStatusAndStartTimeLessThanEqual(AuctionStatus status, Instant time);
-    
-    // Find ONGOING auctions that should end (for scheduled task)
-    List<AuctionEntity> findAllByStatusAndEndTimeLessThanEqual(AuctionStatus status, Instant time);
+    Optional<List<AuctionEntity>> findAllByStatus(AuctionEntity.AuctionStatus status);
+
+    Page<AuctionEntity> findAllByAuctioneerId(UUID auctioneerId, Pageable pageable);
+    Page<AuctionEntity> findAllByStatus(AuctionEntity.AuctionStatus status, Pageable pageable);
+
+    List<AuctionEntity> findAllByStatusAndStartTimeLessThanEqual(AuctionStatus auctionStatus, Instant now);
+
+    List<AuctionEntity> findAllByStatusAndEndTimeLessThanEqual(AuctionStatus auctionStatus, Instant now);
 }

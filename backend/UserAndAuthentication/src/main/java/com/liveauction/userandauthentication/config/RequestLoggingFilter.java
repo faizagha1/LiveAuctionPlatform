@@ -13,17 +13,37 @@ import java.io.IOException;
 @Slf4j
 @Component
 public class RequestLoggingFilter extends OncePerRequestFilter {
+
     @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain filterChain
+    ) throws ServletException, IOException {
+
+        // Skip logging for actuator endpoints
+        if (request.getRequestURI().startsWith("/actuator")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         long startTime = System.currentTimeMillis();
-        log.info("➡️ {} {}", request.getMethod(), request.getRequestURI());
-        
-        filterChain.doFilter(request, response);
-        
-        long duration = System.currentTimeMillis() - startTime;
-        log.info("⬅️ {} {} - {}ms - Status: {}", 
-            request.getMethod(), request.getRequestURI(), duration, response.getStatus());
+        log.info("➡️  {} {}", request.getMethod(), request.getRequestURI());
+
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            long duration = System.currentTimeMillis() - startTime;
+            int status = response.getStatus();
+            String loglevel = (status >= 400) ? "WARN" : "INFO";
+
+            log.atLevel(org.slf4j.event.Level.valueOf(loglevel))
+                    .log("⬅️  {} {} - {}ms - Status: {}",
+                            request.getMethod(),
+                            request.getRequestURI(),
+                            duration,
+                            status
+                    );
+        }
     }
 }

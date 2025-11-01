@@ -1,9 +1,7 @@
 package com.liveauction.auction.service;
 
 import com.liveauction.auction.entity.AuctionEntity;
-import com.liveauction.auction.event.producer.AuctionCreatedEventProducer;
 import com.liveauction.auction.repository.AuctionRepository;
-import com.liveauction.shared.events.AuctionEvents.AuctionCreatedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -19,7 +17,6 @@ import java.util.List;
 public class AuctionScheduledService {
     
     private final AuctionRepository auctionRepository;
-    private final AuctionCreatedEventProducer auctionCreatedEventProducer;
 
     /**
      * Check every 60 seconds for auctions that should start
@@ -44,17 +41,8 @@ public class AuctionScheduledService {
             auctionRepository.save(auction);
             log.info("✅ Auction STARTED: {} (ID: {})", auction.getTitle(), auction.getId());
 
-            AuctionCreatedEvent event = new AuctionCreatedEvent(
-                    auction.getId().toString(),
-                    auction.getItemId().toString(),
-                    auction.getAuctioneerId().toString(),
-                    auction.getStartingPrice() != null ? auction.getStartingPrice().doubleValue() : 0.0,
-                    auction.getReservePrice() != null ? auction.getReservePrice().doubleValue() : 0.0,
-                    auction.getBidIncrement() != null ? auction.getBidIncrement().doubleValue() : 0.0,
-                    auction.getStartTime(),
-                    auction.getEndTime()
-            );
-            auctionCreatedEventProducer.auctionCreated(event);
+            // TODO: Publish an 'AuctionStartedEvent' to notify the Bidding Service
+            // e.g., auctionEventProducer.publishAuctionStarted(new AuctionStartedEvent(...));
         }
         
         log.info("Started {} auctions", auctionsToStart.size());
@@ -83,7 +71,9 @@ public class AuctionScheduledService {
             auctionRepository.save(auction);
             log.info("🏁 Auction ENDED: {} (ID: {})", auction.getTitle(), auction.getId());
             
-            // TODO V2: Winner determination will be done by Go Bidding Engine
+            // TODO: Publish an 'AuctionEndedEvent'
+            // This event should trigger winner determination, payment processing, etc.
+            // e.g., auctionEventProducer.publishAuctionEnded(new AuctionEndedEvent(...));
         }
         
         log.info("Ended {} auctions", auctionsToEnd.size());

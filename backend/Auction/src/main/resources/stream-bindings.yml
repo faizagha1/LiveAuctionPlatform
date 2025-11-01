@@ -1,13 +1,27 @@
-# application.yml (SAME for Auth, Item, Auction services)
 spring:
   cloud:
     stream:
       bindings:
-        eventChannel-out-0:
-          destination: resource-events-exchange
+        # Define the output binding name
+        auction-events-out:
+          destination: resource-events-exchange # The name of the RabbitMQ exchange
+
       rabbit:
         bindings:
-          eventChannel-out-0:
+          auction-events-out:
             producer:
               exchangeType: topic
+              # Use the 'routingKey' header from the Message<?> to route the message
               routing-key-expression: headers['routingKey']
+
+app:
+  # Custom routing keys for RabbitMQ events
+  bindings:
+    auction:
+      created:
+        routing-key: "auction.created"
+      # Add more event routing keys here as needed
+      # e.g., started, ended, cancelled
+
+    # This MUST match the binding name defined in spring.cloud.stream.bindings
+    auction-event-exchange: "auction-events-out"

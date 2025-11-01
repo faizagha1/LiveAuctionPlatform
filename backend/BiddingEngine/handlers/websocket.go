@@ -75,6 +75,44 @@ func WebSocketHandler(h *hub.Hub) gin.HandlerFunc {
 
 		log.Printf("User %s (%s) connected to auction %s", username, userId, auctionId)
 
+		go func() {
+			room.Mutex.RLock() // Read-lock to safely get current state
+			defer room.Mutex.RUnlock()
+
+			// Transform internal Bid history to the frontend-friendly format
+			history := room.BidHistory
+			frontendHistory := make([]models.FrontendBid, len(history))
+			for i, bid := range history {
+				frontendHistory[i] = models.FrontendBid{
+					Amount:    bid.BidAmount,
+					BidderID:  bid.BidPlacedById,
+					Timestamp: bid.BidPlacedAt,
+				}
+			}
+
+			for i, j := 0, len(frontendHistory)-1; i < j; i, j = i+1, j-1 {
+				frontendHistory[i], frontendHistory[j] = frontendHistory[j], frontendHistory[i]
+			}
+
+			var currentBid *models.FrontendBid
+			if len(frontendHistory) > 0 {
+				currentBid = &frontendHistory[0]
+			}
+
+			bidderCount := len(room.BiddersInAuction)
+
+			initialStateMsg := models.AuctionStateMessage{
+				Type:        "AUCTION_STATE",
+				CurrentBid:  currentBid,
+				BidHistory:  frontendHistory,
+				BidderCount: bidderCount,
+			}
+
+			if err := conn.WriteJSON(initialStateMsg); err != nil {
+				log.Printf("Error sending initial state to %s: %v", userId, err)
+			}
+		}()
+
 		// 9. Cleanup on disconnect
 		defer func() {
 			room.Mutex.Lock()

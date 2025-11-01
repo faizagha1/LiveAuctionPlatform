@@ -1,18 +1,26 @@
 spring:
+  # Spring Cloud Stream configuration for RabbitMQ
   cloud:
     stream:
+      # Define the output binding name
       bindings:
-        eventChannel-out-0:
-          destination: resource-events-exchange
+        user-events-out:
+          destination: resource-events-exchange # The name of the RabbitMQ exchange
+
       rabbit:
         bindings:
-          eventChannel-out-0:
+          user-events-out:
             producer:
               exchangeType: topic
+              # Use the 'routingKey' header from the Message<?> to route the message
               routing-key-expression: headers['routingKey']
 
 app:
+  # Custom routing keys for RabbitMQ events
   bindings:
     user:
       created: "user.created"
-    event-exchange: eventChannel-out-0
+    password:
+      reset: "password.reset"
+    # This MUST match the binding name defined in spring.cloud.stream.bindings
+    event-exchange: "user-events-out"

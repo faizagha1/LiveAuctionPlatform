@@ -2,6 +2,7 @@ package com.liveauction.userandauthentication.service;
 
 import com.liveauction.userandauthentication.entity.UserEntity;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -12,6 +13,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
+import java.time.Duration;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -26,10 +28,12 @@ public class JwtService {
     private String secretKey;
 
     @Value("${app.jwt.access-token-expiration}")
-    private long accessTokenExpiration;
+    private Duration accessTokenExpiration;
 
     @Value("${app.jwt.refresh-token-expiration}")
-    private long refreshTokenExpiration;
+    private Duration refreshTokenExpiration;
+
+    private SecretKey signInKey;
 
     /**
      * Extract user ID (from token subject)
@@ -77,13 +81,13 @@ public class JwtService {
     /**
      * Build the actual JWT token
      */
-    private String buildToken(Map<String, Object> extraClaims, UserEntity user, long jwtExpiration) {
+    private String buildToken(Map<String, Object> extraClaims, UserEntity user, Duration jwtExpiration) {
         long now = System.currentTimeMillis();
         return Jwts.builder()
                 .claims(extraClaims)
                 .subject(user.getId().toString())
                 .issuedAt(new Date(now))
-                .expiration(new Date(now + jwtExpiration))
+                .expiration(new Date(now + jwtExpiration.toMillis()))
                 .signWith(getSignInKey())
                 .compact();
     }
@@ -96,8 +100,8 @@ public class JwtService {
             final String userId = extractUserId(token);
             UserEntity user = (UserEntity) userDetails;
             return userId.equals(user.getId().toString()) && !isTokenExpired(token);
-        } catch (Exception e) {
-            log.warn("Invalid JWT token: {}", e.getMessage());
+        } catch (JwtException e) {
+            log.warn("Invalid JWT token processing attempt: {}", e.getMessage());
             return false;
         }
     }
@@ -106,7 +110,12 @@ public class JwtService {
      * Check if token is expired
      */
     private boolean isTokenExpired(String token) {
-        return extractExpiration(token).before(new Date());
+        try {
+            return extractExpiration(token).before(new Date());
+        } catch (JwtException e) {
+            log.warn("Could not extract expiration from token: {}", e.getMessage());
+            return true;
+        }
     }
 
     /**
@@ -128,11 +137,13 @@ public class JwtService {
     }
 
     /**
-     * Get signing key from secret
+     * Get signing key from secret, lazy-initialized.
      */
     private SecretKey getSignInKey() {
-        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
-        return Keys.hmacShaKeyFor(keyBytes);
+        if (signInKey == null) {
+            byte[] keyBytes = Decoders.BASE64.decode(secretKey);
+            this.signInKey = Keys.hmacShaKeyFor(keyBytes);
+        }
+        return signInKey;
     }
 }
-
